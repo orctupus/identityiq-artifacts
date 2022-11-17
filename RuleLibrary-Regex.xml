@@ -1,0 +1,242 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="RuleLibrary-Regex">
+  <Source>
+  import java.io.*;
+  import java.util.*;
+  import java.util.regex.Matcher;
+  import java.util.regex.MatchResult;
+  import java.util.regex.Pattern;
+  import java.util.regex.MatchResult;
+  import java.text.Normalizer;
+  import sailpoint.object.*;
+  import sailpoint.api.*;
+  import sailpoint.tools.*;
+  import org.apache.commons.logging.LogFactory;
+  import org.apache.commons.logging.Log;
+  
+  Log regLog = LogFactory.getLog("RuleLibrary-Regex");
+  boolean lite = regLog.isTraceEnabled();
+  
+  Map tracking = new HashMap();
+  boolean DEBUG_ENABLED = true;
+  
+   //---------------------------------------------------------
+  //--- Check for Diacritical Marks ---
+  //--- Source : https://www.unicode.org/charts/PDF/U0300.pdf
+  boolean containsDiacritic(String text) throws Exception{
+    
+    if(lite){
+      regLog.trace("Entering [containsDiacritic] with...");
+      regLog.trace("Text : [" + ( (null == text) ? "NullString" : text) + "]");
+    }
+    boolean result = false;
+    if(text != null &amp;&amp; !text.isEmpty()){
+      boolean isNormalized = Util.nullsafeBoolean(Normalizer.isNormalized(text, Normalizer.Form.NFD));
+      if(!isNormalized){
+        if(lite){
+          regLog.trace("[containsDiacritic] Non-Normalized String Detected.");
+        }
+        try{
+        	String normalizedText = Normalizer.normalize(text, Normalizer.Form.NFD);
+          Pattern pattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+          String modifiedText = pattern.matcher(normalizedText).replaceAll("");
+          if(modifiedText.equalsIgnoreCase(text)){
+            if(lite){
+              regLog.trace("[containsDiacritic] Modified Matches Original. No Diacritical Marks Detected.");
+            }
+            result = false;
+          } else {
+            if(lite){
+              regLog.trace("[containsDiacritic] Modified Does Not Match Original. Diacritical Marks Detected.");
+            }
+            result = true;
+          }
+          if(lite){
+            regLog.trace("[containsDiacritic] Original   : [" + text + "]");
+            regLog.trace("[containsDiacritic] Normalized : [" + normalizedText + "]");
+            regLog.trace("[containsDiacritic] Modified   : [" + modifiedText + "]");
+          }
+          if(DEBUG_ENABLED){
+            tracking.put("FoundDiacriticInput", text);
+            tracking.put("FoundDiacriticNormalized", normalizedText);
+            tracking.put("FoundDiacriticModified", modifiedText);
+            tracking.put("FoundDiacriticResult", result.toString());
+          }
+        }catch(NullPointException e){
+          regLog.error("[containsDiacritic] NullPointer Exception Encountered: [" + e + "]");
+        }catch(Exception ex){
+          regLog.error("[containsDiacritic] Exception Encountered: [" + ex + "]");
+        }
+      }
+  	}
+    if(lite){
+      regLog.trace("Exiting [containsDiacritic] with...");
+      regLog.trace("Result : [" + result.toString() + "]");
+    }
+    return result;
+  }
+   //---------------------------------------------------------
+  //--- Return Cleaned String of Diacritical marks Removed ---
+  String cleanDiacritics(String text) throws Exception{
+    if(lite){
+      regLog.trace("Entering [cleanDiacritics] with...");
+      regLog.trace("Text :   [" + ( (null == text) ? "NullString" : text) + "]");
+    }
+    String result = "";
+    if(text != null &amp;&amp; !text.isEmpty()){
+      boolean isNormalized = Util.nullsafeBoolean(Normalizer.isNormalized(text, Normalizer.Form.NFD));
+      if(!isNormalized){
+        if(lite){
+          regLog.trace("[cleanDiacritics] Non-Normalized String Detected.");
+        }
+        try{
+        	String normalizedText = Normalizer.normalize(text, Normalizer.Form.NFD);
+          Pattern pattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+          String modifiedText = pattern.matcher(normalizedText).replaceAll("");
+          if(modifiedText.equalsIgnoreCase(text)){
+            if(lite){
+              regLog.trace("[cleanDiacritics] Modified Matches Original. No Diacritical Marks Detected.");
+            }
+            result = text;
+          } else {
+            if(lite){
+              regLog.trace("[cleanDiacritics] Modified Does Not Match Original. Diacritical Marks Detected.");
+            }
+            result = modifiedText;
+          }
+          if(lite){
+            regLog.trace("[cleanDiacritics] Original   : [" + text + "]");
+            regLog.trace("[cleanDiacritics] Normalized : [" + normalizedText + "]");
+            regLog.trace("[cleanDiacritics] Modified   : [" + modifiedText + "]");
+          }
+          if(DEBUG_ENABLED){
+            tracking.put("CleanDiacriticsInput", text);
+            tracking.put("CleanDiacriticsNormalized", normalizedText);
+            tracking.put("CleanDiacriticsModified", modifiedText);
+            tracking.put("CleanDiacriticsResult", result.toString());
+          }
+        }catch(NullPointException e){
+          regLog.error("[cleanDiacritics] NullPointer Exception Encountered: [" + e + "]");
+        }catch(Exception ex){
+          regLog.error("[cleanDiacritics] Exception Encountered: [" + ex + "]");
+        }
+      } else {
+        result = text;
+      }
+  	}
+    if(lite){
+      regLog.trace("Exiting [cleanDiacritics] with...");
+      regLog.trace("Result : [" + result + "]");
+    }
+    return result;
+
+  }
+   //---------------------------------------------------------
+  //--- Clean Formatting ---
+  String cleanFormatting(text) throws Exception{
+    if(lite){
+      regLog.trace("Entering [cleanFormatting] with...");
+      regLog.trace("Text :   [" + ( (null == text) ? "NullString" : text) + "]");
+    }
+    String result = "";
+    if(text != null &amp;&amp; !text.isEmpty()){
+      try{
+        
+        //--- Pattern : Spaces ---
+        Pattern patternSpaces = Pattern.compile("\\p{Space}+");
+        String modifiedText = patternSpaces.matcher(text).replaceAll("");
+        if(modifiedText.equalsIgnoreCase(text)){
+          if(lite){
+            regLog.trace("[cleanFormatting] Modified Matches Original. No Spaces Found.");
+          }
+          if(DEBUG_ENABLED){
+            tracking.put("CleanInput", text);
+            tracking.put("CleanFoundSpace", "False");
+            tracking.put("CleanFoundSpaceBefore", text);
+            tracking.put("CleanFoundSpaceAfter", modifiedtext);
+          }
+        } else {
+          if(lite){
+            regLog.trace("[cleanFormatting] Modified Does Not Match Original. Spaces Detected");
+          }
+          if(DEBUG_ENABLED){
+            tracking.put("CleanInput", text);
+            tracking.put("CleanFoundSpace", "True");
+            tracking.put("CleanFoundSpaceBefore", text);
+            tracking.put("CleanFoundSpaceAfter", modifiedText);
+          }
+        }
+        //--- Pattern : Punctuation ---
+        Pattern patternSymbols = Pattern.compile("\\p{Punct}+");
+        String modifiedForPunct = patternSymbols.matcher(modifiedText).replaceAll("");
+        if(modifiedForPunct.equalsIgnoreCase(text)){
+          if(lite){
+            regLog.trace("[cleanFormatting] ModifiedPunct Matches Original. No Punctuation Found.");
+          }
+          result = modifiedText;
+          if(DEBUG_ENABLED){
+            tracking.put("CleanFoundPunct", "False");
+            tracking.put("CleanFoundPunctBefore", normalizedText);
+            tracking.put("CleanFoundPunctAfter", modifiedForPunct);
+          }
+        }else if(modifiedForPunct.equalsIgnoreCase(modifiedText)){
+          if(lite){
+            regLog.trace("[cleanFormatting] ModifiedPunct Matches ModifiedSpaces. No Punctuation Found.");
+          }
+          result = modifiedText;
+          if(DEBUG_ENABLED){
+            tracking.put("CleanFoundPunct", "False");
+            tracking.put("CleanFoundPunctBefore", modifiedText);
+            tracking.put("CleanFoundPunctAfter", modifiedForPunct);
+          }
+        }else{
+          if(lite){
+            regLog.trace("[cleanFormatting] Modified Does Not Match Original. Punctuation Detected");
+          }
+          result = modifiedForPunct;
+          
+          if(DEBUG_ENABLED){
+            tracking.put("CleanFoundPunct", "True");
+            tracking.put("CleanFoundPunctBefore", modifiedText);
+            tracking.put("CleanFoundPunctAfter", modifiedForPunct);
+          }
+        }   
+      }catch(NullPointException e){
+        regLog.error("[cleanFormatting] NullPointer Exception Encountered: [" + e + "]");
+      }catch(Exception ex){
+        regLog.error("[cleanFormatting] Exception Encountered: [" + ex + "]");
+      }
+    }else {
+      regLog.error("[cleanFormatting] Error. Invalid Input is NullOrEmpty.");
+    }
+    if(DEBUG_ENABLED){
+      tracking.put("CleanFoundResult", result);
+    }
+    return result;
+  }
+  /*
+  //==========================================
+  // Tests
+  //==========================================
+  //--- Diacritical Marks ---
+  String diaTest = "pâte";
+  String diaTest2 = "résumé";
+  
+  //--- Diacritical Test ---
+  boolean hasDiacritic = Util.nullsafeBoolean(containsDiacritic(diaTest2));
+  if(hasDiacritic){
+    String cleanString = cleanDiacritics(diaTest2);
+    tracking.put("DiacriticCleanString", cleanString);
+    tracking.put("DiacriticResult", hasDiacritic.toString());
+  }
+  
+  //--- White Spaces and Punctuation Test ---
+  String spacetest = "SP A C E";  
+  String punctTest = "S ? $ \\ aC 5";
+  String cleanFormats = cleanFormatting(punctTest);
+  
+  return tracking;
+  */
+  </Source>
+</Rule>
