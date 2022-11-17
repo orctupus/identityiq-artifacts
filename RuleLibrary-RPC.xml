@@ -1,0 +1,952 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule id="ac19d8b3839511518183a87ac412233f" language="beanshell" modified="1668621640757" name="RuleLibrary-RPC">
+  <Source>
+import java.util.HashMap;
+import java.util.Map;
+import java.lang.reflect.*;
+import java.util.List;
+import java.util.Iterator;
+import java.util.ArrayList;
+import sailpoint.api.SailPointFactory;
+import sailpoint.api.SailPointContext;
+import sailpoint.api.IdentityService;
+import sailpoint.object.Application;
+import sailpoint.object.Attributes;
+import sailpoint.object.Identity;
+import sailpoint.object.JasperResult;
+import sailpoint.object.Link;
+import sailpoint.object.TaskResult;
+import sailpoint.object.TaskEvent;
+import sailpoint.object.TaskResult.CompletionStatus;
+import sailpoint.object.RpcRequest;
+import sailpoint.object.RpcResponse;
+import sailpoint.object.Rule;
+import sailpoint.object.ProvisioningPlan;
+import sailpoint.object.ProvisioningPlan.AbstractRequest;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import sailpoint.object.ProvisioningPlan.AccountRequest.Operation;
+import sailpoint.object.ProvisioningPlan.AttributeRequest;
+import sailpoint.object.ProvisioningPlan.ObjectRequest;
+import sailpoint.object.ProvisioningPlan.ObjectOperation;
+import sailpoint.object.ProvisioningPlan.ObjectRequest;
+import sailpoint.object.ResourceObject;
+import sailpoint.connector.RPCService;
+import sailpoint.connector.MicrosoftForefrontIdentityManager.*;
+import sailpoint.tools.xml.XMLReferenceResolver;
+import sailpoint.tools.xml.AbstractXmlObject;
+import sailpoint.tools.GeneralException;
+import sailpoint.tools.Message;
+import sailpoint.tools.Message.Type;
+
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.logging.Log;
+
+Log ruleLog = LogFactory.getLog("RuleLibrary-RPC");
+
+boolean isComplete = false;
+
+//===================================================================================================================================
+// IQService Configuration
+//===================================================================================================================================
+String IQSERVICE_SERVER_NAME = "TARGET IQSERVER NAME";
+String IQSERVICE_SCRIPT_EXECUTOR = "ScriptExecutor";
+String IIQ_CONNECTOR_RULE_TYPE = "runBeforeScript";
+boolean IQSERVICE_USETLS =  false;
+String EXCHANGE_CRED = "REPLACE WITH CONTEXT.DECRYPT CALL";
+  
+//===================================================================================================================================
+// RPC Request Mock Data Configuration
+//===================================================================================================================================
+String APPLICATION_NAME = "REPLACE ME WITH ACTIVE DIRECTORY";
+String EXCHANGE_KEY_NAME = "ExchangeDecrypt";
+String POWERSHELL_RULE_NAME = "REPLACE ME WITH TARGET POWERSHELL RULE";
+String NATIVE_ID_AD_ATTRIBUTE_NAME = "distinguishedName";
+String AD_ATTRIBUTE_SAMACCOUNTNAME = "samAccountName";
+String IIQ_IDENTITY_ATTRIBUTE_SAMACCOUNTNAME = "REPLACE ME WITH IIQ ATTRIBUTE NAME";
+    
+//===================================================================================================================================
+// Method Section: GetAbstractRpcObject 
+//===================================================================================================================================
+  public HashMap getAbstractRpcObject(){
+    
+    Map dataMap = new HashMap();
+    return dataMap;
+  }
+  
+  public HashMap getAbstractRpcObject(Application app){
+    
+    Map dataMap = getAbstractRpcObject();
+    dataMap.put("Application",app.getAttributes());
+    return dataMap;
+    
+  }
+  
+  public HashMap getAbstractRpcObject(Application app, Rule ruleObject){
+    
+    Map dataMap = getAbstractRpcObject(app);
+    dataMap.put("preScript", ruleObject);
+    return dataMap;
+    
+  }
+  
+  public HashMap getAbstractRpcObject(Application app, Rule ruleObject,ProvisioningPlan.AccountRequest accountRequest){
+    
+    Map dataMap = getAbstractRpcObject(app,ruleObject);
+    dataMap.put("Request", accountRequest);
+    return dataMap;
+    
+  }
+  
+//===================================================================================================================================
+// Method Section: GetAbstractAccountRequest 
+//===================================================================================================================================
+  public ProvisioningPlan.AccountRequest getAbstractAccountRequest(){
+    
+    ProvisioningPlan.AccountRequest accountRequest = new ProvisioningPlan.AccountRequest();
+    return accountRequest;
+    
+  }
+  public ProvisioningPlan.AccountRequest getAbstractAccountRequest(ProvisioningPlan.AccountRequest.Operation operation){
+    
+    ProvisioningPlan.AccountRequest accountRequest = getAbstractAccountRequest();
+    accountRequest.setOperation(operation);
+    return accountRequest;
+    
+  }
+  public ProvisioningPlan.AccountRequest getAbstractAccountRequest(ProvisioningPlan.AccountRequest.Operation operation,Application application){
+    
+    ProvisioningPlan.AccountRequest accountRequest = getAbstractAccountRequest(operation);
+    accountRequest.setApplication(application.getName());
+    return accountRequest;
+    
+  }
+  public ProvisioningPlan.AccountRequest getAbstractAccountRequest(ProvisioningPlan.AccountRequest.Operation operation,Application application,String nativeIdentity){
+    
+    ProvisioningPlan.AccountRequest accountRequest = getAbstractAccountRequest(operation,application);
+    accountRequest.setNativeIdentity(nativeIdentity);
+    return accountRequest;
+    
+  }
+  
+//===================================================================================================================================
+// Method Section: GetAbstractAttributeRequest
+//===================================================================================================================================
+  public ProvisioningPlan.AttributeRequest getAbstractAttributeRequest(){
+  	
+    ProvisioningPlan.AttributeRequest attributeRequest = new ProvisioningPlan.AttributeRequest();
+    return attributeRequest;
+    
+  }
+  public ProvisioningPlan.AttributeRequest getAbstractAttributeRequest(ProvisioningPlan.Operation operation){
+    
+    ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest();
+    attributeRequest.setOperation(operation);
+    return attributeRequest;
+    
+  }
+  public ProvisioningPlan.AttributeRequest getAbstractAttributeRequest(ProvisioningPlan.Operation operation,String attributeName){
+    
+    ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest(operation);
+    attributeRequest.setName(attributeName);
+    return attributeRequest;
+    
+  }
+  public ProvisioningPlan.AttributeRequest getAbstractAttributeRequest(ProvisioningPlan.Operation operation,String attributeName,String attributeValue){
+    
+    ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest(operation,attributeName);
+    attributeRequest.setValue(attributeValue);
+    return attributeRequest;
+    
+  }
+//===================================================================================================================================
+// Method Section: GetAttributeRequestList
+//===================================================================================================================================
+  public List getAttributeRequestList(ProvisioningPlan.AttributeRequest attributeRequest){
+    
+    List attributeList = new ArrayLast();
+    attributeList.add(attributeRequest);
+    return attributeList;
+    
+  }
+  public List getAttributeRequestList(ProvisioningPlan.Operation operation, Map keyValuePairs){
+    
+    List attributeList = new ArrayList();
+    Set set = keyValuePairs.entrySet();
+    Iterator iterator = set.iterator();
+    
+    while(iterator.hasNext()){
+      Map.Entry entry = (Map.Entry)iterator.next();
+      ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest(operation,entry.getKey(),entry.getValue());
+      attributeList.add(attributeRequest);
+    }
+    return attributeList;
+
+  }
+//===================================================================================================================================
+// Method Section: GetAttributeRequestList
+//===================================================================================================================================
+  public ProvisioningPlan.AccountRequest generateAccountRequest(){
+    
+    ProvisioningPlan.AccountRequest accountRequest = getAbstractAccountRequest();
+    ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest();
+    List attributeList = getAttributeRequestList(attributeRequest);
+    accountRequest.setAttributeRequests(attributeList);
+    return accountRequest;
+    
+  }
+  public ProvisioningPlan.AccountRequest generateAccountRequest(ProvisioningPlan.AccountRequest.Operation accountRequestOperation){
+
+    ProvisioningPlan.AccountRequest accountRequest = getAbstractAccountRequest(accountRequestOperation);
+    ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest();
+    List attributeList = getAttributeRequestList(attributeRequest);
+    accountRequest.setAttributeRequests(attributeList);
+    return accountRequest;
+
+  }
+  public ProvisioningPlan.AccountRequest generateAccountRequest(
+    ProvisioningPlan.AccountRequest.Operation accountRequestOperation, ProvisioningPlan.Operation attributeRequestOperation){
+    
+    ProvisioningPlan.AttributeRequest attributeRequest = getAbstractAttributeRequest(attributeRequestOperation);
+    List attributeList = getAttributeRequestList(attributeRequest);
+    
+    //TODO : 10_20_22 - Finish the full AccountRequestProcess to generate one from scratch using the abstracts
+    
+  }
+//===================================================================================================================================
+// Method Section: GetRpcRequest
+//===================================================================================================================================
+  public RpcRequest getRpcRequest(String scriptExecutorService,String scriptType,Map dataMap) throws GeneralException {
+
+    if((scriptExecutorService !=null &amp;&amp; !scriptExecutorService.isEmpty()) &amp;&amp;
+       (scriptType != null &amp;&amp; !scriptType.isEmpty()) &amp;&amp; dataMap != null){
+
+      if(scriptType.equalsIgnoreCase("ScriptExecutor")){
+        if(scriptType.equalsIgnoreCase("runBeforeScript")){
+          
+          RpcRequest request = new RpcRequest("ScriptExecutor","runBeforeScript", dataMap);
+          
+        }
+
+        if(scriptType.equalsIgnoreCase("runAfterScript")){
+          
+          RpcRequest request = new RpcRequest("ScriptExecutor","runAfterScript",dataMap);
+          
+        }
+        if(!scriptType.equalsIgnoreCase( ("runBeforeScript" || "runAfterScript") )){
+          
+          RpcRequest request = new RpcRequest("ScriptExecutor","runBeforeScript", dataMap);
+          
+        }
+      } 
+    }
+    return request;
+  }
+//===================================================================================================================================
+// Method Section: SendRpcRequest
+//===================================================================================================================================
+    public RpcResponse sendRpcRequest(String iqServiceServerName, int iqServicePortNumber, RpcRequest req)throws GeneralException{
+
+      if( (iqServiceServerName != null &amp;&amp; !iqServiceServerName.isEmpty() &amp;&amp; iqServiceServerName instanceof String) &amp;&amp;
+         (iqServicePortNumber != null &amp;&amp; iqServicePortNumber instanceof int) ){
+
+        RPCService _service = new RPCService(iqServiceServerName,iqServicePortNumber);
+        
+    		_service.setConnectorServices(new sailpoint.connector.DefaultConnectorServices());
+				
+        RpcResponse _response = _service.execute(req);
+      
+      }
+      return _response;
+    }
+//===================================================================================================================================
+// Method Section: GetAttributeRequestsFromProvisioningPlan
+//===================================================================================================================================
+    public List getAttributeRequestsFromProvisioningPlan(ProvisioningPlan plan){
+			
+      if(plan != null){
+        List accountRequestList = plan.getAccountRequests();
+        List attributeRequestList = new ArrayList();
+
+        for(ProvisioningPlan.AccountRequest accountRequest : accountRequestList){
+
+          List attributes = accountRequest.getAttributeRequests();
+
+          for(ProvisioningPlan.AttributeRequest attributeRequest : attributes){
+
+            attributeRequestList.add(attributeRequest);
+          }
+        }
+      }
+      return attributeRequestList;
+    }
+//===================================================================================================================================
+// Method Section: TestRpcConnection
+//===================================================================================================================================
+    public RpcResponse testRpcConnection(String iqServiceServerName,
+                                         int iqServicePort,
+                                         Application application,
+                                         Rule ruleObject) throws GeneralException {
+      try{
+        ProvisioningPlan.AccountRequest accountRequest = getAbstractAccountRequest(ProvisioningPlan.AccountRequest.Operation.Modify);
+        Map dataMap = getAbstractRpcObject(application,ruleObject,accountRequest);
+        RpcRequest request = getRpcRequest("ScriptExecutor","runBeforeScript",dataMap);
+        RpcResponse response = sendRpcRequest(iqServiceServerName,iqServicePort,request);
+      }catch(GeneralException e){
+        throw new GeneralException();
+      }
+      return response;
+      
+    }
+
+    /*
+
+        	Exchange PowerShell Mapping (Request Object)
+  				IdentityIQ                                                                  | Power Shell
+          ---------------------------------------------------------------------------------------------------------------------------
+					Attributes : {}
+          ---------------------------------------------------------------------------------------------------------------------------
+          ProvisioningPlan.AccountRequest AcctReq = new ProvisioningPlan.AccountRequest();     | AttributeRequests : {Label}
+					ProvisioningPlan.AttributeRequest AttrReq = new ProvisioningPlan.AttributeRequest(); | 
+          AttrReq.setname("Label")  ;                                                          |
+          AcctReq.add(AttrReq);                                                                |
+          ---------------------------------------------------------------------------------------------------------------------------
+					Attributes : {}
+          ---------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+				  PermissionRequests : {}
+          AccountRequest.setNativeIdentity | NativeIdentity : CN=NAME,OU=SITE,DC=DOMAIN,DC=COM
+          Instance :
+          ApplicationName : AppName
+          Operation : ProvisioningPlan.Operation.&lt;EnumValue>
+          ProvisioningResult : 
+
+
+
+          PowerShell Mapping (Attribute Object)
+          IdentityIQ                                                    | Power Shell
+          ---------------------------------------------------------------------------------------------------------------------------
+    			AttributeRequest.put("Label","LabelValue")                    | Attributes : {Label} 
+          AttributeRequest.setName("Label")                             | Name       : Label
+          AttributeRequest.setValue("LabelValue")                       | Value      : LabelValue"
+          AttributeRequest.setOperation(ProvisioningPlan.Operation.Add) | Operation  : Add
+          ProvisioningResult : 
+
+
+    		*/
+    		
+      
+//===================================================================================================================================
+// Method Section: GetIdentityAdNativeId : Get Native Identity for Active Directory
+//===================================================================================================================================
+  public String getIdentityAdNativeId(SailPointContext context, Application app, Identity identity){
+
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Entering [getIdentityNativeId]...with: ");
+      ruleLog.trace("[context]     : [" + ( (null == context) ? "NullContext" : context ) + "]");
+      ruleLog.trace("[application] : [" + ( (null == app) ? "NullApp" : app ) + "]");
+      ruleLog.trace("[identity]    : [" + ( (null == identity) ? "NullIdentity" : identity ) + "]");
+
+    }
+
+    String _result = "";
+
+    if(context != null &amp;&amp; identity != null &amp;&amp; app != null){
+
+      if(ruleLog.isTraceEnabled()){
+        ruleLog.trace("[getIdentityNativeId] Context,Identity,Application NotNull. Proceeding...");
+      }
+
+      Link linkResult = null;
+      String gid = identity.getStringAttribute("gid");
+      IdentityService identityService = new IdentityService(context);
+      List links = identityService.getLinks(identity, app);
+      if( links != null &amp;&amp; !links.isEmpty() ){
+
+        if(ruleLog.isTraceEnabled()){
+          ruleLog.trace("[getIdentityNativeId] Links NotNullorEmpty. Proceeding...");
+        }
+
+        for (Link link : links) {
+
+          if(ruleLog.isTraceEnabled()){
+            ruleLog.trace("[getIdentityNativeId] Iterating through Link: [" + link + "]");
+          }
+
+          Object sAMAccountName = link.getAttribute("sAMAccountName");
+
+          if( (sAMAccountName instanceof String) &amp;&amp; ( (String)sAMAccountName).matches(gid) ) {
+
+            linkResult = link;
+
+            if(link != null){
+              _result = link.getNativeIdentity();
+            }
+
+            if(ruleLog.isTraceEnabled()){
+              ruleLog.trace("[getIdentityNativeId] Link is instanceof string and matches GID");
+            }
+
+          }
+        }
+      }
+    }
+
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [getIdentityNativeId] with result: [" + _result + "]");
+    }
+    return _result;
+  }
+
+
+//===================================================================================================================================
+// void addRpcAttributeRequestToMap : Add Attribute Request to Provisioning Plan
+//===================================================================================================================================
+  //REPLACED BY Abstract Methods
+  public void addRpcAttributeRequestToMap(ProvisioningPlan.AccountRequest acctRequest,
+                                          SailPointContext context,
+                                          Application application, 
+                                          Identity identity,
+                                          String nativeId,
+                                          String ruleName){
+    
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Entering [addRpcAttributeRequestToMap] with:...");
+      ruleLog.trace("[AcctRequest] : [" + ( (null == acctRequest) ? "NullRequest" : acctRequest ) + "]");
+      ruleLog.trace("[context]     : [" + ( (null == context) ? "NullContext" : context ) + "]");
+      ruleLog.trace("[application] : [" + ( (null == application) ? "NullApp" : application ) + "]");
+      ruleLog.trace("[identity]    : [" + ( (null == identity) ? "NullIdentity" : identity ) + "]");
+      ruleLog.trace("[nativeId]    : [" + ( (null == nativeId) ? "NullOrEmptyNativeId" : nativeId ) + "]");
+      ruleLog.trace("[ruleName]    : [" + ( (null == ruleName) ? "NullOrEmptyRuleName" : ruleName ) + "]");
+
+    }
+    
+    ProvisioningPlan.ObjectRequest rpcArgs = new ProvisioningPlan.ObjectRequest();
+    
+    //--- Condition: if accountRequest,context,application,identity,nativeid,ruleName
+    if(plan != null &amp;&amp; 
+       context != null &amp;&amp; 
+       application != null &amp;&amp; 
+       identity != null &amp;&amp; 
+       ( nativeId != null &amp;&amp; !nativeId.isEmpty() ) &amp;&amp;
+       ( ruleName != null &amp;&amp; !ruleName.isEmpty() ) ){
+      
+      if(ruleLog.isTraceEnabled()){
+        ruleLog.trace("[addRpcAttributeRequestToMap] Context, Application, identity, nativeId, ruleName NotNull");
+      }
+      
+      // Application Attributes
+      Map applicationAttributesMap = application.getAttributes();
+
+      // Target Rule to Run
+      Rule ruleObj = context.getObject(Rule.class, ruleName);
+
+      // Set Rule Source  
+      String ruleSrc  = ruleObj.getSource();
+			
+      // Add Rule Source to Workflow Object
+      rpcArgs.put("preScript", ruleObj);
+      rpcArgs.put("ruleSrc", ruleSrc);
+      rpcArgs.put("Application", applicationAttributesMap);
+    	
+      
+    }
+    
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [addRpcAttributeRequestToMap] with ProvisioningPlan : [" + ( (null == plan) ? "NullOrBlankRequest" : plan )  + "]");
+    }
+    
+
+  }
+  
+                                   
+//===================================================================================================================================
+// void initAccountRequest : Add Attribute Request to Provisioning Plan
+//===================================================================================================================================
+  public ProvisioningPlan.AttributeRequest getAttributeRequest(String attributeValue, String applicationAttributeName){
+    
+    if(ruleLog.isTraceEnabled()){
+
+      ruleLog.trace("Entering [getAttributeRequest] with: ");
+      ruleLog.trace("[accountRequest] : [" + ( (null == accountRequest) ? "NullOrBlankMap" : accountRequest ) + "]");
+      ruleLog.trace("[attributeValue] : [" + ( (null == attributeValue) ? "NullOrBlankString" : attributeValue ) + "]");
+      ruleLog.trace("[applicationAttributeName] : [" + ( (null == applicationAttributeName) ? "NullOrBlankString" : applicationAttributeName) + "]");
+
+    }
+
+    //--- Set Result variable ---
+    ProvisioningPlan.AttributeRequest attributeRequest = new ProvisioningPlan.AttributeRequest();
+
+    //--- Condition: If 
+    if((attributeValue != null &amp;&amp; !attributeValue.isEmpty() ) &amp;&amp; 
+       (applicationAttributeName != null &amp;&amp; !applicationAttributeName.isEmpty())){
+
+      if(ruleLog.isTraceEnabled()){
+        ruleLog.trace("[getAttributeRequest] AccountRequestMap,AttributeValue,ApplicationAttributeName : NotNullOrEmpty -> PASS. Proceeding...");
+
+      }
+
+      // Set Attribute Name
+      attributeRequest.setName(applicationAttributeName);
+
+      // Set Attribute Value
+      attributeRequest.setValue(attributeValue);
+
+      // Set Attribute Operation on Target Account
+      attributeRequest.setOperation(ProvisioningPlan.Operation.Set);
+      
+
+    }
+		
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [getAttributeRequest] with Map: [" + attributeRequest + "]");
+    }
+    
+    //--- Return ---
+    return attributeRequest;
+    
+  }
+
+//===================================================================================================================================
+// void getExchangeAttributeRequest : add Exchange Provisioning Key to Plan
+//===================================================================================================================================
+ //REPLACE WITH ABSTRACT METHODS
+  public ProvisioningPlan.AttributeRequest getExchangeAttributeRequest(String exchangeKey){
+    
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Entering [getExchangeAttributeRequest] with:...");
+      ruleLog.trace("[AccountRequest] : [" + ( (null == acctRequest) ? "NullOrBlankMap" : acctRequest ) + "]");
+      ruleLog.trace("[exchangeKey]    : [" + ( (null == exchangeKey || exchangeKey.isEmpty()) ? "NullOrBlankString" : exchangeKey ) + "]");
+    }
+    
+		// Create Empty Attribute Request
+    AttributeRequest attrExchange =  new ProvisioningPlan.AttributeRequest();
+    
+    // Condition: if accountRequest,exchangeKey isNotNull
+    if(acctRequest != null &amp;&amp; (exchangeKey != null &amp;&amp; !exchangeKey.isEmpty())){
+    
+      // Set Attribute Request for "Add" of BLANK
+      attrExchange.setName(EXCHANGE_KEY_NAME);  // use this to get a response back
+
+      // Set Attribute Operation on Target Account
+      attrExchange.setOperation(ProvisioningPlan.Operation.Add);
+
+      // Set Attribute Value
+      attrExchange.setValue(exchangeKey);
+
+
+  	}
+    
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [getExchangeAttributeRequest] with RequestMap: [" + acctRequest + "]");
+    }
+    
+    return attrExchange;
+  }
+
+//===================================================================================================================================
+// String getLinkAttribute : Get an Identity Link Attribute from String Values
+//===================================================================================================================================
+  String getLinkAttribute(SailPointContext context, Identity identity, Application application, String attributeName) throws GeneralException {
+  
+    if(ruleLog.isTraceEnabled()){
+      
+      ruleLog.trace("Entering [getLinkAttribute] with: ... ");
+      ruleLog.trace("[context]        : [" + ( (null == context) ? "NullOrEmptyContext" : context ) + "]");
+      ruleLog.trace("[identity]       : [" + ( (null == identity) ? "NullOrEmptyIdentity" : context ) + "]");
+      ruleLog.trace("[application]    : [" + ( (null == application) ? "NullOrEmptyApplication" : application ) + "]");
+      ruleLog.trace("[attributeName]  : [" + ( (null == attributeName) ? "NullOrEmptyAttributeName" : attributeName ) + "]");
+      
+    }
+    //--- Set Result Variable ---
+    String result = "";
+    
+    if(context != null &amp;&amp; identity != null &amp;&amp; application != null &amp;&amp; attributeName != null) {
+      
+      //--- Call Identity Service API ---
+      IdentityService identityService = new IdentityService(context);
+      
+      //--- Get Identity Links from Identity Service ---
+      List links = identityService.getLinks(identity, application);
+      
+      //--- Condition: If links NotNull AND list is greater than zero ---
+      if( (links != null) &amp;&amp; (links.size() > 0)) {
+        
+        //--- Initialize Link Object for iteration ---
+        Link theLink = null;
+        
+        //--- Condition: If List only contains (1) link ---
+        if (links.size() == 1) {
+          
+          //--- Set Link Object to first Item in the Array ---
+          theLink = links.get(0);
+          
+        } else {
+          
+          //--- Loop: foreach Link Object in Links List ->
+          for (Link link : links) {
+            
+            //--- Condition: if Current Link Object isNotDisabled -> ---
+            if (!link.isDisabled()) {
+              
+              //--- Set Link Object from the First Enabled Link Account ---
+              theLink = link;
+              
+              break;
+            }
+          }
+        }
+        
+        //--- Condition: if link object found is NotNull -> ----
+        if (theLink != null) {
+          
+          //--- Set value to Link Object OF Link Object attribute name ---
+          Object value = theLink.getAttribute(attributeName);
+          
+          //--- Condition: if value is NotNull -> ---
+          if (value != null) {
+            
+            //--- Set Result Variable to value from Object ---
+            result = value.toString();
+          }
+        }
+      }
+    }
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [getLinkAttribute] with:...");
+      ruleLog.trace("[Result] : [" + ( (null == result || result.isEmpty()) ? "NullOrBlankResult" : result ) + "]");
+    }
+   
+    return result;
+  }
+//===================================================================================================================================
+// Map buildRpcRequest : Assemble the Provisioning plan / Account Request / Attribute Requests / Then Call the Rule containing powershell
+//===================================================================================================================================
+  public ProvisioningPlan.AccountRequest.Operation getAccountRequestOperation(String operation){
+		
+    if(ruleLog.isTraceEnabled()){
+    	ruleLog.trace("Entering [getAccountRequestOperation] with: ");
+      ruleLog.trace("[operation] : [" + ( (null == operation) ? "NullOrBlank" : operation ) + "]");
+    }
+    
+    ProvisioningPlan.AccountRequest.Operation accountRequest = null;
+    
+    if(operation != null &amp;&amp; !operation.isEmpty()){
+
+ 
+      if(operation.equalsIgnoreCase("create")){
+				accountRequest = ProvisioningPlan.AccountRequest.Operation.Create;
+      }
+
+      if(operation.equalsIgnoreCase("delete")){
+        accountRequest = ProvisioningPlan.AccountRequest.Operation.Delete;
+      }
+      
+      if(operation.equalsIgnoreCase("disable")){
+        accountRequest = ProvisioningPlan.AccountRequest.Operation.Disable;
+      }
+        
+      
+      if(operation.equalsIgnoreCase("enabled")){
+        accountRequest = ProvisioningPlan.AccountRequest.Operation.Enable;
+      }
+        
+      
+      if(operation.equalsIgnoreCase("lock")){
+        accountRequest = ProvisioningPlan.AccountRequest.Operation.Lock;
+      }
+  
+      
+      if(operation.equalsIgnoreCase("modify")){
+        accountRequest = ProvisioningPlan.AccountRequest.Operation.Modify;
+      }
+        
+      
+      if(operation.equalsIgnoreCase("unlock")){
+        accountRequest = ProvisioningPlan.AccountRequest.Operation.Unlock;
+      }
+  
+    }
+    if(null == accountRequest){
+      accountRequest = ProvisioningPlan.AccountRequest.Operation.Modify;
+      if(ruleLog.isTraceEnabled()){
+        ruleLog.trace("[getAccountRequestOperation] Returning Default: [Create]");
+      }
+    }
+		return accountRequest;
+  }
+//===================================================================================================================================
+// ProvisioningPlan.Operation getAttributeRequestOperation : Get operation for attribute requests going into account requests
+//===================================================================================================================================
+  public ProvisioningPlan.Operation getAttributeRequestOperation(String attributeOperation){
+    
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Entering [getAttributeRequestOperation] with: ");
+      ruleLog.trace("[AttributeOperation] : [" + ( (null == attributeOperation) ? "NullOrBlank" : attributeOperation ) + "]");
+    }
+    
+    ProvisioningPlan.Operation op = null;
+    
+    if(attributeOperation != null &amp;&amp; !operation.isEmpty()){
+
+ 			
+      if(operation.equalsIgnoreCase("Add")){
+				op = ProvisioningPlan.AccountRequest.Operation.Create;
+      }
+      if(operation.equalsIgnoreCase("Remove")){
+        op = ProvisioningPlan.Operation.Remove;
+      }
+
+      if(operation.equalsIgnoreCase("Retain")){
+        op = ProvisioningPlan.Operation.Retain;
+        
+      }
+      if(operation.equalsIgnoreCase("Revoke")){
+        op = ProvisioningPlan.Operation.Revoke;
+        
+      }
+      if(opertaion.equalsIgnoreCase("Set")){
+        op = ProvisioningPlan.Operation.Set;
+        
+      }
+  
+    }
+    if(null == op){
+      op = ProvisioningPlan.Operation.Set;
+    }
+    
+    return op;
+  }
+//===================================================================================================================================
+// Map getMockProvisioningPlan : Create a provisioning plan object from identityname/app/attribute/attributevalue/operationToDo
+//===================================================================================================================================
+	public ProvisioningPlan.AccountRequest getMockProvisioningPlan(SailPointContext ctx, 
+                                     String identityName, 
+                                     String applicationName, 
+                                     String attributeName, 
+                                     String attributeValue, 
+                                     String accountOperation,
+                                     String attributeOperation) throws GeneralException{
+    
+    if(ruleLog.isTraceEnabled()){
+      
+      ruleLog.trace("Entering [getMockProvisioningPlan] with: ");
+      
+      ruleLog.trace("[identityName]      : [" + 
+                    ( (null == identityName || identityName.isEmpty()) ? "nullOrBlankIdentity" : identityName) + "]");
+      
+      ruleLog.trace("[applicationName]   : [" + 
+                    ( (null == applicationName || applicationName.isEmpty()) ? "nullOrBlankApp" : applicationName) + "]");
+      
+      ruleLog.trace("[attributeName]     : [" + 
+                    ( (null == attributeName || attributeName.isEmpty()) ? "nullOrBlankAttr" : attributeName) + "]");
+      
+      ruleLog.trace("[attributeValue]    : [" + 
+                    ( (null == attributeValue || attributeValue.isEmpty()) ? "nullorBlankValue" : attributeValue) + "]");
+      
+      ruleLog.trace("[accountOperation]  : [" + 
+                    ( (null == accountOperation|| accountOperation.isEmpty()) ? "nullOrBlankOperation" : accountOperation) + "]");
+      
+      ruleLog.trace("[attributeOperation]: [" + 
+                    ( (null == attributeOperation || attributeOperation.isEmpty()) ? "nullOrBlankAttributeOperation" : attributeOperation ) + "]");
+    }
+    
+    ProvisioningPlan.AccountRequest ar = new ProvisioningPlan.AccountRequest();
+    
+    //--- Condition: if context,identityName,applicationName,attributeName,attributeValue,useNativeId,operation is NotNull -> ---
+		if(context != null &amp;&amp; 
+       identityName != null &amp;&amp; 
+       applicationName != null &amp;&amp; 
+       attributeName != null &amp;&amp; 
+       attributeValue != null &amp;&amp; 
+       operation != null){
+      
+      if(ruleLog.isTraceEnabled()){
+        ruleLog.trace("[getMockProvisioningPlan] context,identityName,applicationName,attributeName,attributeValue,UseNativeId,operation is [NOTNULL]. PASS -> Proceeding..");
+      }
+      
+      //--- Get Identity ---
+      Identity identity = context.getObject(Identity.class, identityName);
+
+      //--- Get Application ---
+      Application app = context.getObject(Application.class, applicationName);
+
+      //--- Create Account Request from Method ---
+      ar = initAccountRequest(context, applicationName);
+
+      //--- Set Provisioning Plan Account Operation ---
+      ProvisioningPlan.AccountRequest.Operation op = getAccountRequestOperation(accountOperation);
+      ar.setOperation(op);
+			
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [getMockProvisioningPlan] with : [" + returnMap + "]");
+    }
+   
+  }
+    return ar;
+}
+  
+//===================================================================================================================================
+// buildRpcRequest : Assemble the Provisioning plan / Account Request / Attribute Requests / Then Call the Rule containing powershell
+//===================================================================================================================================
+  public ProvisioningPlan buildRpcRequest(SailPointContext ctx, 
+                                          String identityName,
+                                          String applicationName,
+                                          String targetAttribute, 
+                                          String targetAttributeValue,
+                                          String accountOperation,
+                                          String attributeOperation,
+                                          String ruleName,
+                                          boolean exchangeProvision){
+
+    if(ruleLog.isTraceEnabled()){
+
+      ruleLog.trace("Entering [buildRpcRequest] with: ");
+      ruleLog.trace("[Context]           : [" + ( (null == ctx) ? "NullOrBlank" : ctx ) + "]");
+      ruleLog.trace("[Identity]          : [" + ( (null == identityName) ? "NullOrBlank" : identityName ) + "]");
+      ruleLog.trace("[Application]       : [" + ( (null == applicationName) ? "NullOrBlank" : applicationName ) + "]");
+      ruleLog.trace("[AccountOperation]  : [" + ( (null == accountOperation) ? "NullOrBlank" : accountOperation ) + "]");
+      ruleLog.trace("[AttributeOperation]: [" + ( (null == attributeOperation) ? "NullOrBlank" : attributeOperation ) + "]");
+      ruleLog.trace("[RuleName]          : [" + ( (null == ruleName) ? "NullOrBlank" : ruleName ) + "]");
+      ruleLog.trace("[ExchangeProvision] : [" + ( (null == exchangeProvision) ? "NullValue" : exchangeProvision.toString() ) + "]");
+
+    }
+		//--- Return Object --
+    ProvisioningPlan.AccountRequest accountRequest = new ProvisioningPlan.AccountRequest();
+    ProvisioningPlan plan = new ProvisioningPlan();
+    
+    //--- Condition: if ctx,identityName,applicationName,ruleName,operation is NotNull ---
+    if(ctx != null &amp;&amp; 
+       identityName != null &amp;&amp; 
+       applicationName != null &amp;&amp; 
+       ruleName != null &amp;&amp; 
+       accountOperation != null &amp;&amp; 
+       attributeOperation != null){
+
+      if(ruleLog.isTraceEnabled()){
+        ruleLog.trace("[buildRpcRequest] Context,IdentityName,ApplicationName,RuleName [NOTNULL]. PASSED -> Proceeding...");
+      }
+
+      //--- Set Application ---
+      Application app = context.getObject(Application.class, applicationName);
+
+      //--- Set Identity ---
+      Identity id = context.getObject(Identity.class, identityName);
+
+      //--- Native Identity ---
+      String nativeId = getLinkAttribute(context, identity, app, NATIVE_ID_AD_ATTRIBUTE_NAME);
+
+      //--- Condition: if app,id is NotNull -> ---
+      if(app != null &amp;&amp; id != null){
+
+        //--- Get a Provisioning Plan Account Request ---
+        accountRequest = getMockProvisioningPlan(context,identityName,applicationName,targetAttribute,targetAttributeValue,accountOperation,attributeOperation);
+
+        //--- Get Requested Attribute Request Object ---
+        ProvisioningPlan.AttributeRequest attr1 = getAttributeRequest(targetAttributeValue,targetAttribute);
+       	
+        //--- Get Exchange Attribute Request Object ---
+        ProvisioningPlan.AttributeRequest attr2 = getExchangeAttributeRequest(EXCHANGE_CRED);
+        
+        //--- Add Attribute Requests to Account Request ---
+        accountRequest.add(attr1);
+        
+        if(exchangeProvision){
+          accountRequest.add(attr2);
+        }
+        
+        //--- Add to Provisioning Plan ---
+        plan.add(accountRequest);
+
+ 				//--- VOID - ADD RPC Required Attributes to Provisioning Plan ---
+        //ProvisioningPlan.AttributeRequest attr3 = addRpcAttributeRequestToMap(accountRequest,context,app,id,nativeId,ruleName); 
+
+      }
+    }
+    
+    if(ruleLog.isTraceEnabled()){
+      ruleLog.trace("Exiting [buildRpcRequest] with: [" + provisioningPlan + "]");
+    }
+    
+    return plan;
+    
+  }
+//=========================================================================================
+// RpcResponse checkRpcFailure : Handle the PowerShell Return output of IQ Service
+//=========================================================================================
+    public RpcResponse checkRpcFailure(RpcResponse response) throws Exception {
+
+      if (response == null) {
+        return null;
+      }
+      if (response.getErrors() != null &amp;&amp; response.getErrors().size() > 0) {
+
+        throw new IllegalStateException(response.getErrors().toString());
+      }
+      return response;
+    }
+//=========================================================================================
+//Map stageRpcRequest : Prepare for communication to IQService
+//=========================================================================================
+  public ProvisioningPlan.AccountRequest stageRpcRequest(SailPointContext ctx, Application app,Identity identity, Object provisioningPayload){
+    
+    
+    //--- Hash Map Storing the data being put into IQService ---
+    Map requestMap = new HashMap();
+    
+    //--- Account Request Object ---
+    ProvisioningPlan.AccountRequest accountRequest = new ProvisioningPlan.AccountRequest();
+    
+    //String nativeId = getIdentityAdNativeId(ctx,app,identity);
+    
+    //--- Set Provisioning Plan Parent Object
+    ProvisioningPlan provisioningPlan = new ProvisioningPlan();
+    
+    if(ctx != null &amp;&amp; app != null &amp;&amp; identity !=null){
+      
+        //--- Required Provisioning Plan Objects ---
+        provisioningPlan.setNativeIdentity(identity.getName());
+        provisioningPlan.setTargetIntegration(app.getName());
+
+        //--- Required Account Request Objects ---
+        accountRequest.setApplication(app.getName());
+        //accountRequest.setNativeIdentity(getIdentityAdNativeId(ctx,app,identity));
+        accountRequest.setOperation(ProvisioningPlan.AccountRequest.Operation.Enable);
+
+        //--- Attribute Request Objects ---
+        Attributes accountRequestAttributes = new Attributes();
+        accountRequestAttributes.put("flow","AccountsRequest");
+        accountRequestAttributes.put("interface", "LCM");
+        accountRequestAttributes.put("operation", "Enable");
+        accountRequestAttributes.put("metaDataAttributeName","metaDataValue");
+
+        //---Metadata being passed via AccountRequests ---
+        accountRequestAttributes.put("ExchangeKey", EXCHANGE_CRED);
+        if(provisioningPayload != null){
+        	accountRequestAttributes.put("ProvisioningPlan", provisioningPayload);
+        }
+        //accountRequestAttributes.put(NATIVE_ID_AD_ATTRIBUTE_NAME, nativeId);
+      	accountRequestAttributes.put(NATIVE_ID_AD_ATTRIBUTE_NAME, identity.getName());
+        accountRequestAttributes.put(AD_ATTRIBUTE_SAMACCOUNTNAME, identity.getStringAttribute(IIQ_IDENTITY_ATTRIBUTE_SAMACCOUNTNAME));
+        accountRequest.put("Attributes",accountRequestAttributes);
+
+        //--- Account Request Attribute Request Objects ---
+        ProvisioningPlan.AttributeRequest attributeRequest = new ProvisioningPlan.AttributeRequest();
+        attributeRequest.put("mail", "SAM@domain.com");
+        attributeRequest.put("op", ProvisioningPlan.Operation.Add);
+      	accountRequest.put("Attributes", attributeRequest);
+        //provisioningPlan.put("Request",provisioningPlan.getAllRequests());
+      
+      	
+    }
+    
+    return accountRequest;
+
+    
+  }
+</Source>
+</Rule>
